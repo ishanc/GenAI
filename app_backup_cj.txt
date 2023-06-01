@@ -1,0 +1,310 @@
+const openai = require('openai');
+const axios = require('axios');
+const dotenv = require('dotenv');
+const request = require("request");
+const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
+const { HNSWLib } = require("langchain/vectorstores/hnswlib");
+const fs = require("fs");
+const { RecursiveCharacterTextSplitter } = require('langchain/text_splitter');
+const express = require('express');
+const app = express();
+const cors = require('cors');
+const https = require('https');// IC 
+const http = require('http');//IC
+dotenv.config();
+
+const API_KEY = process.env.OPENAI_API_KEY;
+const RESOURCE_ENDPOINT = "https://wemopenai.openai.azure.com/";
+const deployment_name = "text-embedding-ada-002";
+const txtFilename = "BenInfo";
+
+let answer = "";
+const txtPath = `./${txtFilename}.txt`;
+const VECTOR_STORE_PATH = txtFilename+ '.index';
+
+openai.apiType = 'azure';
+openai.apiKey = API_KEY;
+openai.apiBase = RESOURCE_ENDPOINT;
+openai.apiVersion = '2022-12-01';
+
+app.use(cors({
+    origin: "https://one.walmart.com",
+}));
+
+app.get('/users', (req, res) => {
+let question = "";
+    if (!req.headers['question']){
+question = "";
+console.log("hit with null question"+ req.headers['question']);
+}else{
+    res.header('Access-Control-Allow-Origin', '*');
+    question = req.headers['question'];
+    console.log("question has a value: "+ req.headers['question']);
+}
+console.log("this is the question" + question);
+const contextPrompt = req.headers['contextprompt'];
+    runWithEmbeddings(question);
+
+async function runWithEmbeddings(question) {
+
+    console.log("Hit from outside server");
+
+    
+
+const embed = new OpenAIEmbeddings({
+    azureOpenAIApiVersion: "2023-03-15-preview",
+    azureOpenAIApiKey: API_KEY,
+    azureOpenAIApiInstanceName: "wemopenai",
+    azureOpenAIApiDeploymentName: "text-embedding-ada-002",
+
+});
+//console.log(embed);
+let vectorStore;
+const text = fs.readFileSync(txtPath, 'utf8');
+const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 0 });
+const docs = await textSplitter.createDocuments([text]);
+if (fs.existsSync(VECTOR_STORE_PATH)) {
+    console.log('Vector exists...');
+    vectorStore = await HNSWLib.load(VECTOR_STORE_PATH, embed);
+    console.log("vector values: " + vectorStore);
+} else {
+    //console.log(docs);
+    vectorStore = await HNSWLib.fromDocuments([docs[0]], embed);
+   
+    for (let i = 1; i < docs.length; i++) {
+        await vectorStore.addDocuments([docs[i]], embed);
+        console.log(i);
+    }
+    
+    console.log("loaded docs");
+
+    await vectorStore.save(VECTOR_STORE_PATH);
+}
+
+    //sim search finnnnnally
+    console.log("at sim serach" + question);
+    const simSearch = await vectorStore.similaritySearch(question, 5);
+    console.log('SimSearch : 1' + simSearch[0].pageContent + "simSearch 2: "+ simSearch[0].pageContent);
+
+
+
+const url = `https://wemopenai.openai.azure.com/openai/deployments/gpt-35-turbo/chat/completions?api-version=2023-03-15-preview`;
+
+const headers = {
+    "Content-Type": "application/json",
+    "api-key": API_KEY,
+};
+
+const body = {
+    "messages": [
+        {
+            "role": "system",
+            "content": "You are an AI assistant here to help find information. Here is some context to help with the question. If the information seems to be in a table format converted to text, please read it respectively to the column headers and keep the answers restricted to the information in its respective column. " + simSearch[0].pageContent + simSearch[1].pageContent + simSearch[2].pageContent,
+        },
+        {
+            "role": "user",
+            "content": question,
+        }
+    ]
+};
+
+await request({
+    url,
+    headers,
+    body,
+    method: "POST",
+    json: true,
+}, (err, response, body) => {
+    if (err) {
+        console.log(err);
+        answer = "";
+    } else {
+        console.log(body);
+	 if (body.error){
+console.log("error message exists:" + body.choices);
+		answer = "";
+	}else{
+console.log("error message doesn't exist");
+    	        answer = body.choices[0].message.content;
+             }
+    }
+        // Get all of the users from the database.
+
+        let prompt = contextPrompt;
+        
+
+        
+        console.log("this is answer: " + answer);
+        if (contextPrompt) {
+            prompt = "completed something with the request";
+        }
+        console.log(req.headers);
+
+        res.json([
+            {
+                name: 'John Doe',
+                email: 'johndoe@example.com',
+                answer: answer,
+            },
+            {
+                name: 'Jane Doe',
+                email: 'janedoe@example.com',
+                prompt: prompt,
+            },
+        ]);
+
+});
+    
+    
+}//end async
+
+});//end of app
+
+// IC Listen to https port
+
+const httpsServer = https.createServer({
+  key: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/privkey.pem'),
+  cert: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/fullchain.pem'),
+}, app);
+
+httpsServer.listen(443, () => {
+    console.log('HTTPS Server running on port 443');
+});
+//app.listen(443); // MODIFIED 80 TO 443
+
+
+
+//app.get('/users', (req, res) => {
+
+//    async function callAPI() {
+
+    
+//    // Get all of the users from the database.
+//    const question = req.headers['question'];
+//    const contextPrompt = req.headers['contextprompt'];
+//    let prompt = contextPrompt;
+//    let answer = "";
+    
+//    answer = await runWithEmbeddings(question);
+//    console.log("this is answer: " + answer);
+//    if (contextPrompt) {
+//        prompt = "completed something with the request";
+//    }
+//    console.log(req.headers);
+//    res.json([
+//        {
+//            name: 'John Doe',
+//            email: 'johndoe@example.com',
+//            answer: answer,
+//        },
+//        {
+//            name: 'Jane Doe',
+//            email: 'janedoe@example.com',
+//            prompt: prompt,
+//        },
+//    ]);
+
+//    }//end async
+//    callAPI();
+//});//end of app
+
+
+//app.listen(3000);
+
+
+
+
+
+
+
+
+
+
+
+//embeddings
+
+//console.log(HNSWLib);
+
+//console.log("here"+vectorStore);
+
+
+
+//const url = `https://wemopenai.openai.azure.com/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-03-15-preview`;
+
+
+//const jsonData = {
+//    "input": "The food was delicious and the waiter...",
+//    "input": "what is the food..."
+//};
+
+
+
+
+//const headers = {
+//    "Content-Type": "application/json",
+//    "api-key": API_KEY,
+//};
+
+//const body = {
+//    jsonData
+//};
+
+
+//request({
+//    url,
+//    headers,
+//    body: jsonData,
+//    method: "POST",
+//    json: true,
+//}, (err, response, body) => {
+//    if (err) {
+//        console.log(err);
+//    } else {
+       
+        
+        
+//        //if (fs.existsSync(VECTOR_STORE_PATH)) {
+//        //    console.log('Vector exists...');
+//        //} else {
+
+//        //    //load vectors
+//        //    const embeddingsLoad = [
+//        //        [1, 2, 3],
+//        //        [4, 5, 6],
+//        //        [7, 8, 9],
+//        //    ];
+
+//        //    const embeddings = [];
+//        //    const space = 'cosine'; // Replace 3 with the actual dimensionality of your vectors
+
+//        //    // ...
+
+//        //    const args = {
+//        //        space: space.toString(), // Convert the number of dimensions to a string
+//        //        numDimensions: body.data[0].embedding.length, // Convert the number of dimensions to a string
+//        //    };
+
+//        //    const vectorStore = new HNSWLib(body.data, args);
+//        //    vectorStore.addVectors(body.data, body.data);
+//        //    console.log(vectorStore);
+
+//        //    if (embeddings) {
+//        //        console.log("The embeddings were successfully added to the vecotre store.");
+//        //    } else {
+//        //        console.log("the embeddings were not successfully added to the vectorstore.");
+//        //    }
+//        //    console.log(VECTOR_STORE_PATH);
+//        //    //vectorStore.save(VECTOR_STORE_PATH);
+//        //    console.log(vectorStore);
+//        //}
+        
+//    }
+//});
+
+
+
+
+
+
+
+    

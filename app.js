@@ -1,0 +1,514 @@
+﻿const openai = require('openai');
+const axios = require('axios');
+const dotenv = require('dotenv');
+const request = require("request");
+const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
+const { HNSWLib } = require("langchain/vectorstores/hnswlib");
+const fs = require("fs");
+const { RecursiveCharacterTextSplitter } = require('langchain/text_splitter');
+const express = require('express');
+const app = express();
+const cors = require('cors');
+const https = require('https');// IC 
+const http = require('http');//IC
+dotenv.config();
+
+const API_KEY = process.env.OPENAI_API_KEY;
+const RESOURCE_ENDPOINT = "https://wemopenai.openai.azure.com/";
+const deployment_name = "text-embedding-ada-002";
+const txtFilename = "BenInfo";
+
+let answer = "";
+const txtPath = `./${txtFilename}.txt`;
+const VECTOR_STORE_PATH = txtFilename+ '.index';
+const CITATION_VECTOR_STORE_PATH = 'citations.index';
+
+openai.apiType = 'azure';
+openai.apiKey = API_KEY;
+openai.apiBase = RESOURCE_ENDPOINT;
+openai.apiVersion = '2022-12-01';
+
+app.use(cors({
+    origin: "https://www.thestore.co.in",
+}));
+
+app.get('/users', (req, res) => {
+let question = "";
+    if (!req.headers['question']){
+question = "";
+console.log("hit with null question"+ req.headers['question']);
+}else{
+    res.header('Access-Control-Allow-Origin', '*');
+    question = req.headers['question'];
+    console.log("question has a value: "+ req.headers['question']);
+}
+console.log("this is the question" + question);
+const contextPrompt = req.headers['contextprompt'];
+    runWithEmbeddings(question);
+
+async function runWithEmbeddings(question) {
+
+    console.log("Hit from outside server");
+
+    
+
+const embed = new OpenAIEmbeddings({
+    azureOpenAIApiVersion: "2023-03-15-preview",
+    azureOpenAIApiKey: API_KEY,
+    azureOpenAIApiInstanceName: "wemopenai",
+    azureOpenAIApiDeploymentName: "text-embedding-ada-002",
+
+});
+//console.log(embed);
+let vectorStore;
+const text = fs.readFileSync(txtPath, 'utf8');
+const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 0 });
+const docs = await textSplitter.createDocuments([text]);
+if (fs.existsSync(VECTOR_STORE_PATH)) {
+    console.log('Vector exists...');
+    vectorStore = await HNSWLib.load(VECTOR_STORE_PATH, embed);
+    console.log("vector values: " + vectorStore);
+} else {
+    //console.log(docs);
+    vectorStore = await HNSWLib.fromDocuments([docs[0]], embed);
+   
+    for (let i = 1; i < docs.length; i++) {
+        await vectorStore.addDocuments([docs[i]], embed);
+        console.log(i);
+    }
+    
+    console.log("loaded docs");
+
+    await vectorStore.save(VECTOR_STORE_PATH);
+}
+
+    //sim search finnnnnally
+    console.log("at sim serach" + question);
+    const simSearch = await vectorStore.similaritySearch(question, 5);
+    console.log('SimSearch : 1' + simSearch[0].pageContent + "simSearch 2: "+ simSearch[0].pageContent);
+
+//begin integrations of citations
+        const citations = fs.readFileSync('citations.txt', 'utf8').split('\n');
+        const texts = [];
+        for (const citation of citations) {
+
+            texts.push(citation);
+        }
+        console.log("texts split into array");
+        const citdocs = await textSplitter.createDocuments(texts);
+        console.log("loaded cit docs" + citdocs[0]);
+        if (fs.existsSync(CITATION_VECTOR_STORE_PATH)) {
+            vectorStore = await HNSWLib.load(CITATION_VECTOR_STORE_PATH, embed);
+            console.log("Cit Vector Store Loaded");
+        } else {
+            vectorStore = await HNSWLib.fromDocuments([citdocs[0]], embed);
+
+            for (let i = 1; i < citdocs.length; i++) {
+                await vectorStore.addDocuments([citdocs[i]], embed);
+                console.log(i);
+            }
+
+            console.log("loaded docs");
+
+            await vectorStore.save(CITATION_VECTOR_STORE_PATH);
+        }
+
+        //query = "Where can i learn about 401k??";
+
+        let simCitSearch = await vectorStore.similaritySearch(question, 5);
+        let bestMatch = simCitSearch[0].pageContent;
+        console.log(bestMatch);
+        //check to see if there is a URL in there, if so output it
+        const urlRegex = /URL:(.*?)\s\|/;
+        const urlMatch = bestMatch.match(urlRegex);
+
+// Split the string into an array
+        let nameArray = bestMatch.split('|');
+
+        // The Page Name is the second element in the array. We remove the "Page Name:" part by splitting again and getting the second part.
+        let pageName = nameArray[1].split(':')[1].trim();
+
+
+
+
+        let url1 = "";
+        if (urlMatch) {
+            url1 = urlMatch[1];
+            console.log(url1);
+        } else {
+            console.log("No URL found in the text.");
+        }
+
+
+        let bestMatchURL = citations[bestMatch];
+        console.log("Best matching URL: " + url1);
+
+        //end integration of citations
+
+const url = `https://wemopenai.openai.azure.com/openai/deployments/gpt-35-turbo/chat/completions?api-version=2023-03-15-preview`;
+
+const headers = {
+    "Content-Type": "application/json",
+    "api-key": API_KEY,
+};
+
+const uniqueID = '1';
+        const CONV_VECTOR_STORE_PATH = uniqueID + '.index';
+
+
+
+        //create vector for conversation
+        // Define a variable to store the conversation history
+        let conversationHistory = [];
+        let convContext = [];
+        let convVectorStore;
+
+        // Append each interaction to the conversation history
+        for (let i = 0; i < convContext.length && conversationHistory.length < 20; i++) {
+            conversationHistory.push(convContext[i]);
+            console.log(i);
+        }
+
+        console.log("loaded conversation Context");
+        // Define the system message
+        const systemMessage = {
+            "role": "system",
+            "content": "Optimize responses for helpfulness, informativeness, and positivity. Focus on providing information related to health benefits during enrollment. Be clear and concise in your responses. Encourage users to ask specific questions and provide relevant details. Emphasize the goal of making the enrollment process seamless and stress-free. Engage users by asking how you can assist them. Maintain a professional and friendly tone throughout the conversation. Please stay accurate and true to the context given and do not deviate or fill in missing information. If you do not have enough information prompt the user for additional details."
+        };
+
+        // Define the file path
+        const filePath = '1.txt';
+
+        // Check if the file exists
+        if (fs.existsSync(filePath)) {
+            // Read the file content
+            fs.readFile(filePath, 'utf8', (err, data) => {
+                if (err) {
+                    console.error('Error reading the file:', err);
+                } else {
+                    try {
+                        // Parse the existing messages from the file content
+                        const existingMessages = JSON.parse(data);
+
+                        let assistantMessage = {
+                            "role": "assistant",
+                            "content": "[Context:" + simSearch[0].pageContent+"] "
+                        };
+
+
+
+                        // Construct the conversation history messages
+                        const conversationHistoryMessages = existingMessages;
+                        console.log("Showing the conv history message:"+ JSON.stringify(conversationHistoryMessages));
+                        // Construct the user message
+                        const userMessage = {
+                            "role": "user",
+                            "content": question
+                        };
+
+                        // Append the user message to the conversation history messages
+                        conversationHistoryMessages.push(assistantMessage);//add additional context
+                        conversationHistoryMessages.push(userMessage);
+                        
+                        // Send the request with the messages to get assistant response
+                        request({
+                            url,
+                            headers,
+                            body: { messages: conversationHistoryMessages },
+                            method: "POST",
+                            json: true,
+                        }, (err, response, body) => {
+                            if (err) {
+                                console.log(err);
+                            } else {
+                                console.log(body);
+                                console.log(body.choices[0].message);
+                                const assistantMessage = body.choices[0].message;
+
+                                // Append the assistant message to the conversation history messages
+                                conversationHistoryMessages.push(assistantMessage);
+
+                                // Append the conversation history messages to the file
+                                const text1 = JSON.stringify(conversationHistoryMessages);
+                                fs.writeFile(filePath, text1, (err) => {
+                                    if (err) {
+                                        console.error('Error writing to the file:', err);
+                                    } else {
+                                        console.log('Text appended to the file successfully!');
+                                    }
+                                });
+                            }
+                                answer = body.choices[0].message.content;
+                                console.log("this is what i am trying to answer:" + answer);
+
+                                let prompt = contextPrompt;
+
+                                console.log("answer before the response is given:" + answer);
+
+                                console.log("this is answer: " + answer);
+                                if (contextPrompt) {
+                                    prompt = "completed something with the request";
+                                }
+                                console.log(req.headers);
+
+                                res.json([
+                                    {
+                                        name: 'John Doe',
+                                        email: 'johndoe@example.com',
+                                        answer: answer + url1,
+					citation: url1,
+                            		pageName: pageName,
+                                    },
+                                    {
+                                        name: 'Jane Doe',
+                                        email: 'janedoe@example.com',
+                                        prompt: prompt,
+                                    },
+                                ]);
+
+
+                        });
+                    } catch (parseError) {
+                        console.error('Error parsing the file content:', parseError);
+                    }
+                }
+            });
+        } else {
+            // Construct the user message
+            const userMessage = {
+                "role": "user",
+                "content": question
+            };
+
+            let assistantMessage = {
+                "role": "assistant",
+                "content": "[Context:" + simSearch[0].pageContent + "] "
+            };
+            // Construct the messages array with system and user messages
+            let messages = [systemMessage, assistantMessage, userMessage];
+
+            // Send the request with the messages to get assistant response
+            request({
+                url,
+                headers,
+                body: { messages },
+                method: "POST",
+                json: true,
+            }, (err, response, body) => {
+                if (err) {
+                    console.log(err);
+                } else {
+                    console.log(body);
+                    console.log(body.choices[0].message);
+                    const assistantMessage = body.choices[0].message;
+
+                    // Append the assistant message to the messages array
+                    messages.push(assistantMessage);
+
+                    // Create the file and write the messages
+                    const conversationHistoryMessages = messages;
+                    const text1 = JSON.stringify(conversationHistoryMessages);
+                    fs.writeFile(filePath, text1, (err) => {
+                        if (err) {
+                            console.error('Error writing to the file:', err);
+                        } else {
+                            console.log('File created and text written successfully!');
+                        }
+                    });
+                }
+                    answer = body.choices[0].message.content;
+
+                    let prompt = contextPrompt;
+
+                    console.log("answer before the response is given:" + answer);
+
+                    console.log("this is answer: " + answer);
+                    if (contextPrompt) {
+                        prompt = "completed something with the request";
+                    }
+                    console.log(req.headers);
+
+                    res.json([
+                        {
+                            name: 'John Doe',
+                            email: 'johndoe@example.com',
+                            answer: answer + url1,
+			    citation: url1,
+                            pageName: pageName,
+                        },
+                        {
+                            name: 'Jane Doe',
+                            email: 'janedoe@example.com',
+                            prompt: prompt,
+                        },
+                    ]);
+
+
+            });
+        }
+
+            
+        
+
+
+        
+
+     //});
+
+
+      
+
+       
+    
+}//end async
+
+});//end of app
+
+// IC Listen to https port
+
+const httpsServer = https.createServer({
+  key: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/privkey.pem'),
+  cert: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/fullchain.pem'),
+}, app);
+
+httpsServer.listen(443, () => {
+    console.log('HTTPS Server running on port 443');
+});
+//app.listen(443); // MODIFIED 80 TO 443
+
+
+
+//app.get('/users', (req, res) => {
+
+//    async function callAPI() {
+
+    
+//    // Get all of the users from the database.
+//    const question = req.headers['question'];
+//    const contextPrompt = req.headers['contextprompt'];
+//    let prompt = contextPrompt;
+//    let answer = "";
+    
+//    answer = await runWithEmbeddings(question);
+//    console.log("this is answer: " + answer);
+//    if (contextPrompt) {
+//        prompt = "completed something with the request";
+//    }
+//    console.log(req.headers);
+//    res.json([
+//        {
+//            name: 'John Doe',
+//            email: 'johndoe@example.com',
+//            answer: answer,
+//        },
+//        {
+//            name: 'Jane Doe',
+//            email: 'janedoe@example.com',
+//            prompt: prompt,
+//        },
+//    ]);
+
+//    }//end async
+//    callAPI();
+//});//end of app
+
+
+//app.listen(3000);
+
+
+
+
+
+
+
+
+
+
+
+//embeddings
+
+//console.log(HNSWLib);
+
+//console.log("here"+vectorStore);
+
+
+
+//const url = `https://wemopenai.openai.azure.com/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-03-15-preview`;
+
+
+//const jsonData = {
+//    "input": "The food was delicious and the waiter...",
+//    "input": "what is the food..."
+//};
+
+
+
+
+//const headers = {
+//    "Content-Type": "application/json",
+//    "api-key": API_KEY,
+//};
+
+//const body = {
+//    jsonData
+//};
+
+
+//request({
+//    url,
+//    headers,
+//    body: jsonData,
+//    method: "POST",
+//    json: true,
+//}, (err, response, body) => {
+//    if (err) {
+//        console.log(err);
+//    } else {
+       
+        
+        
+//        //if (fs.existsSync(VECTOR_STORE_PATH)) {
+//        //    console.log('Vector exists...');
+//        //} else {
+
+//        //    //load vectors
+//        //    const embeddingsLoad = [
+//        //        [1, 2, 3],
+//        //        [4, 5, 6],
+//        //        [7, 8, 9],
+//        //    ];
+
+//        //    const embeddings = [];
+//        //    const space = 'cosine'; // Replace 3 with the actual dimensionality of your vectors
+
+//        //    // ...
+
+//        //    const args = {
+//        //        space: space.toString(), // Convert the number of dimensions to a string
+//        //        numDimensions: body.data[0].embedding.length, // Convert the number of dimensions to a string
+//        //    };
+
+//        //    const vectorStore = new HNSWLib(body.data, args);
+//        //    vectorStore.addVectors(body.data, body.data);
+//        //    console.log(vectorStore);
+
+//        //    if (embeddings) {
+//        //        console.log("The embeddings were successfully added to the vecotre store.");
+//        //    } else {
+//        //        console.log("the embeddings were not successfully added to the vectorstore.");
+//        //    }
+//        //    console.log(VECTOR_STORE_PATH);
+//        //    //vectorStore.save(VECTOR_STORE_PATH);
+//        //    console.log(vectorStore);
+//        //}
+        
+//    }
+//});
+
+
+
+
+
+
+
+    

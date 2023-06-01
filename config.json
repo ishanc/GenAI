@@ -1,0 +1,5 @@
+﻿{
+  "CHATGPT_MODEL": "text-davinci-003",
+  "OPENAI_API_BASE": "https://wemopenai.openai.azure.com/",
+  "OPENAI_API_VERSION": "2023-03-15-preview"
+}
