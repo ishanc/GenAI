@@ -1,4 +1,4 @@
-﻿const openai = require('openai');
+const openai = require('openai');
 const axios = require('axios');
 const dotenv = require('dotenv');
 const request = require("request");
@@ -129,6 +129,16 @@ if (fs.existsSync(VECTOR_STORE_PATH)) {
         let pageName = nameArray[1].split(':')[1].trim();
 
 
+        var lengthofcitation;
+        let pageDesc
+        lengthofcitation = nameArray.length;
+        for(i=2; i<lengthofcitation;i++){
+            if(nameArray[i].split(':')[1]=="Page Description"){
+                pageDesc = nameArray[i].split(':')[1].trim();
+            }
+        }
+       
+
 
 
         let url1 = "";
@@ -258,6 +268,7 @@ const uniqueID = '1';
                                         answer: answer,
 					citation: url1,
                             		pageName: pageName,
+                                    pageDescription:pageDesc,
                                     },
                                     {
                                         name: 'Jane Doe',
@@ -335,6 +346,7 @@ const uniqueID = '1';
                             answer: answer,
 			    citation: url1,
                             pageName: pageName,
+                            pageDescription: pageDesc,
                         },
                         {
                             name: 'Jane Doe',
@@ -366,7 +378,7 @@ const uniqueID = '1';
 
 // IC Listen to https port
 
-const httpsServer = https.createServer({
+/* const httpsServer = https.createServer({
   key: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/privkey.pem'),
   cert: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/fullchain.pem'),
 }, app);
@@ -374,139 +386,11 @@ const httpsServer = https.createServer({
 httpsServer.listen(443, () => {
     console.log('HTTPS Server running on port 443');
 });
+ */
 
 
+app.listen(3000); // MODIFIED 80 TO 443
 
-//app.listen(443); // MODIFIED 80 TO 443
-
-
-
-//app.get('/users', (req, res) => {
-
-//    async function callAPI() {
-
-    
-//    // Get all of the users from the database.
-//    const question = req.headers['question'];
-//    const contextPrompt = req.headers['contextprompt'];
-//    let prompt = contextPrompt;
-//    let answer = "";
-    
-//    answer = await runWithEmbeddings(question);
-//    console.log("this is answer: " + answer);
-//    if (contextPrompt) {
-//        prompt = "completed something with the request";
-//    }
-//    console.log(req.headers);
-//    res.json([
-//        {
-//            name: 'John Doe',
-//            email: 'johndoe@example.com',
-//            answer: answer,
-//        },
-//        {
-//            name: 'Jane Doe',
-//            email: 'janedoe@example.com',
-//            prompt: prompt,
-//        },
-//    ]);
-
-//    }//end async
-//    callAPI();
-//});//end of app
-
-
-//app.listen(3000);
-
-
-
-
-
-
-
-
-
-
-
-//embeddings
-
-//console.log(HNSWLib);
-
-//console.log("here"+vectorStore);
-
-
-
-//const url = `https://wemopenai.openai.azure.com/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-03-15-preview`;
-
-
-//const jsonData = {
-//    "input": "The food was delicious and the waiter...",
-//    "input": "what is the food..."
-//};
-
-
-
-
-//const headers = {
-//    "Content-Type": "application/json",
-//    "api-key": API_KEY,
-//};
-
-//const body = {
-//    jsonData
-//};
-
-
-//request({
-//    url,
-//    headers,
-//    body: jsonData,
-//    method: "POST",
-//    json: true,
-//}, (err, response, body) => {
-//    if (err) {
-//        console.log(err);
-//    } else {
-       
-        
-        
-//        //if (fs.existsSync(VECTOR_STORE_PATH)) {
-//        //    console.log('Vector exists...');
-//        //} else {
-
-//        //    //load vectors
-//        //    const embeddingsLoad = [
-//        //        [1, 2, 3],
-//        //        [4, 5, 6],
-//        //        [7, 8, 9],
-//        //    ];
-
-//        //    const embeddings = [];
-//        //    const space = 'cosine'; // Replace 3 with the actual dimensionality of your vectors
-
-//        //    // ...
-
-//        //    const args = {
-//        //        space: space.toString(), // Convert the number of dimensions to a string
-//        //        numDimensions: body.data[0].embedding.length, // Convert the number of dimensions to a string
-//        //    };
-
-//        //    const vectorStore = new HNSWLib(body.data, args);
-//        //    vectorStore.addVectors(body.data, body.data);
-//        //    console.log(vectorStore);
-
-//        //    if (embeddings) {
-//        //        console.log("The embeddings were successfully added to the vecotre store.");
-//        //    } else {
-//        //        console.log("the embeddings were not successfully added to the vectorstore.");
-//        //    }
-//        //    console.log(VECTOR_STORE_PATH);
-//        //    //vectorStore.save(VECTOR_STORE_PATH);
-//        //    console.log(vectorStore);
-//        //}
-        
-//    }
-//});
 
 
 
