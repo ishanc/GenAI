@@ -47,8 +47,9 @@ openai.apiVersion = '2022-12-01';
 
 
 app.use(cors({
-    origin: "https://one.walmart.com",
+    origin: '*',
 }));
+
 
 
 
@@ -377,8 +378,11 @@ app.get('/users', (req, res) => {
 
 
 const httpsServer = https.createServer({
-  key: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/privkey.pem'),
-  cert: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/fullchain.pem'),
+ // key: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/privkey.pem'),
+ // cert: fs.readFileSync('C:/Certbot/live/www.thestore.co.in/fullchain.pem'),
+ key: fs.readFileSync('C:/Users/Administrator/Downloads/SSL-20230629T171214Z-001/SSL/generated-private-key.pem'),
+ cert: fs.readFileSync('C:/Users/Administrator/Downloads/SSL-20230629T171214Z-001/SSL/5ca3dfe8dce791b0.crt'),
+ca: fs.readFileSync('C:/Users/Administrator/Downloads/SSL-20230629T171214Z-001/SSL/gd_bundle-g2-g1.crt'),
 }, app);
 
 httpsServer.listen(443, () => {
